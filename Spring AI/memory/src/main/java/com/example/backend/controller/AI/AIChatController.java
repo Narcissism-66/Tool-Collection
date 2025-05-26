@@ -1,7 +1,7 @@
 package com.example.backend.controller.AI;
 
 
-import com.example.backend.controller.AI.Advisor.SimpleLoggerAdvisor;
+//import com.example.backend.controller.AI.Advisor.SimpleLoggerAdvisor;
 import com.example.backend.entity.AIChat;
 import com.example.backend.entity.RestBean;
 import com.example.backend.service.AIService;
@@ -11,6 +11,8 @@ import org.springframework.ai.chat.client.ChatClient;
 
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+
+
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -23,8 +25,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+
 import java.time.Duration;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -48,7 +50,7 @@ public class AIChatController {
         return RestBean.success("cg",aiService.getAIChatByUserId(userId));
     }
 
-    //-------------------------------基础对话----------------------------------------
+    //=============================================基础对话=============================================
 
     //最简单的问答
     @GetMapping("/chat1")
@@ -69,10 +71,10 @@ public class AIChatController {
                 .delayElements(Duration.ofMillis(100));//延迟
     }
 
-    //-------------------------------基础对话----------------------------------------
+    //=============================================基础对话=============================================
 
 
-    //-------------------------------记忆对话----------------------------------------
+    //===============================================记忆对话===============================================
     @Autowired
     ChatMemory chatMemory;
     //流式+窗口记忆化
@@ -101,17 +103,26 @@ public class AIChatController {
         return aiResponseFlux.delayElements(Duration.ofMillis(100));
     }
 
-    //数据库存储+流式输出+永久记忆-----------------------没实现永久记忆---------------------------
+    //数据库存储+流式输出+永久记忆
+    @Autowired
+    private com.example.backend.controller.AI.Memory.JdbcChatMemoryRepository chatMemoryRepository;
     @GetMapping(value="/chat4", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> chat4(@RequestParam("message") String message,
                             @RequestParam("userId") Integer userId) {
 
-
-        MessageWindowChatMemory memory = MessageWindowChatMemory.builder()
-                .maxMessages(20)//设置窗口的大小
+        // 创建聊天记忆实例
+        ChatMemory chatMemory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(chatMemoryRepository)  // 使用注入的自定义repository
+                .maxMessages(20)
                 .build();
 
+        // 获取历史消息
+        List<Message> historyMessages = chatMemoryRepository.findByConversationId(userId.toString());
+        for (Message msg : historyMessages) {
+            chatMemory.add(userId.toString(), msg);
+        }
 
+        // 添加新消息
         Message userMessage = new UserMessage(message);
         chatMemory.add(userId.toString(), userMessage);
 
@@ -128,37 +139,40 @@ public class AIChatController {
                     String fullReply = aiReplyBuilder.toString();
                     Message aiMessage = new AssistantMessage(fullReply);
                     chatMemory.add(userId.toString(), aiMessage);
-                    aiService.AddAiChat(new AIChat(userId, message, fullReply,new Date()));
+                    // 保存所有消息到数据库
+                    List<Message> allMessages = chatMemory.get(userId.toString());
+                    //saveAll会先删除之前的记录，然后再添加记录
+                    chatMemoryRepository.saveAll(userId.toString(), allMessages);
                 });
         return aiResponseFlux.delayElements(Duration.ofMillis(100));
     }
 
-    //-------------------------------记忆对话----------------------------------------
+    //===============================================记忆对话===============================================
 
 
-    // -----------------------------Advisors------------------------------------------
+    // ==================================================Advisors===========================================
     /**
      * 在AdvisorConfig里面已经注册好了
      * 需要使用我们自己的chatClient
      * @Autowired
      * private ChatClient chatClientOfAdvisor;//为了区分是不是自己的ChatClient
      */
-    @Autowired
-    private ChatClient chatClientOfAdvisor;//为了区分是不是自己的ChatClient
-    @GetMapping(value = "/chat5", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> chat5(@RequestParam("message") String message)
-    {
-        return chatClientOfAdvisor.prompt()
-                .user(message)
-                .stream()
-                .content()
-                .delayElements(Duration.ofMillis(100));
-    }
+//    @Autowired
+//    private ChatClient chatClientOfAdvisor;//为了区分是不是自己的ChatClient
+//    @GetMapping(value = "/chat5", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+//    public Flux<String> chat5(@RequestParam("message") String message)
+//    {
+//        return chatClientOfAdvisor.prompt()
+//                .user(message)
+//                .stream()
+//                .content()
+//                .delayElements(Duration.ofMillis(100));
+//    }
 
-    // -----------------------------Advisors------------------------------------------
+    // ==================================================Advisors===========================================
 
 
-    //---------------------------------Prompts----------------------------------------
+    //==========================================Prompts==========================================
     /**
      * 使用自定义提示模板的聊天API
      * Prompts类似于提示词工程，用于控制AI的行为、角色和回答风格
@@ -183,7 +197,7 @@ public class AIChatController {
         
         // 填充模板变量，创建系统消息
         // 这里设置AI名称为"嘿嘿"，回复风格为"voice"
-        Message systemMessage = systemPromptTemplate.createMessage(Map.of("name", "嘿嘿", "voice", "voice"));
+        Message systemMessage = systemPromptTemplate.createMessage(Map.of("name", "嘿嘿", "voice", "小孩子"));
         
         // 将用户消息和系统消息组合成一个Prompt对象
         // 系统消息会指导AI如何回复用户消息
@@ -195,5 +209,5 @@ public class AIChatController {
                 .content()
                 .delayElements(Duration.ofMillis(100));//延迟100毫秒，使输出更平滑
     }
-    //---------------------------------Prompts----------------------------------------
+    //==========================================Prompts==========================================
 }

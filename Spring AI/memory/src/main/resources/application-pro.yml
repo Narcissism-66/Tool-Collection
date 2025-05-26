@@ -1,0 +1,23 @@
+server:
+  port: 8081  # 强制指定端口为8081
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/aiitfztest
+    username: aiitfztest
+    password: aiitfztest
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  ai:
+    openai:
+      api-key: sk-y0Z0z1lhHxwzhJB8awQXG2Z6QpyyiEQyDhUpAzfbcxg59mSv
+      base-url: https://xiaoai.plus
+
+
+  web:
+    resources:
+      static-locations:
+        - classpath:/static/
+        - file:${file.upload-dir} # 将上传目录配置为静态资源路径
+
+file:
+  upload-dir: ./uploads # 上传目录路径
